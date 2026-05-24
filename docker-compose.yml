@@ -1,0 +1,78 @@
+name: knowport
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    container_name: knowport-qdrant
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_storage:/qdrant/storage
+    environment:
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-}
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/localhost/6333"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ../docker/backend.Dockerfile
+      args:
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: knowport-backend
+    container_name: knowport-backend
+    ports:
+      - "8081:8080"
+    depends_on:
+      qdrant:
+        condition: service_healthy
+    environment:
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_VECTOR_SIZE=${QDRANT_VECTOR_SIZE:-768}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      - SERVER_PORT=8080
+      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-prod}
+      - CONFIG_ENCRYPTION_KEY=${CONFIG_ENCRYPTION_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend/data:/app/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O- http://localhost:8080/health > /dev/null 2>&1 || exit 1",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: ./docker/frontend.Dockerfile
+      args:
+        BUILD_TIME: ${BUILD_TIME:-unknown}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+    image: knowport-frontend
+    container_name: knowport-frontend
+    ports:
+      - "5173:4173"
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      # Optional: bind mount overrides COPY'd nginx.conf in image; remove if you prefer single source of truth via Dockerfile
+      - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    environment:
+      - BACKEND_URL=http://backend:8080
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  qdrant_storage:
