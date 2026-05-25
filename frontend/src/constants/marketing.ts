@@ -53,5 +53,5 @@ export const SCENARIOS: ReadonlyArray<Scenario> = [
 
 // 外链（顶部导航）
 export const EXTERNAL_LINKS = {
-  github: "https://github.com/", // 实际仓库地址由部署方替换；保留占位符避免空跳转
+  github: "https://github.com/GU-Cryptography/knowport",
 } as const;
